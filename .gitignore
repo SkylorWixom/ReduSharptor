@@ -389,4 +389,13 @@ temp/
 # Project specific temporary files
 *.orig
 *.backup
-*_backup.* 
+*_backup.*
+
+# Additional auto-generated files specific to this project
+*.AssemblyInfo.cs
+*.AssemblyInfoInputs.cache
+*.GeneratedMSBuildEditorConfig.editorconfig
+*.genruntimeconfig.cache
+*.GlobalUsings.g.cs
+**/obj/**
+**/bin/** 
