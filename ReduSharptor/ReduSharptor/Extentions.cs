@@ -590,36 +590,18 @@ namespace ReduSharptor
         {
             Console.WriteLine("Starting Hierarchical Delta Debugging (HDD)...");
             
-            // Build the hierarchical AST
-            var rootNode = BuildHierarchicalAST(testFilePath, testName);
-            if (rootNode == null)
-            {
-                throw new InvalidOperationException($"Could not find test method '{testName}' in file '{testFilePath}'");
-            }
-
-            // Start with all statements
-            var originalStatements = GetTestStatements(testFilePath, testName);
-            var currentStatements = new List<StatementSyntax>(originalStatements);
-
+            // Get all statements from the test method
+            var allStatements = GetTestStatements(testFilePath, testName);
+            var currentStatements = new List<StatementSyntax>(allStatements);
+            
             Console.WriteLine($"Original test has {currentStatements.Count} statements");
-
-            // Apply HDD at each granularity level
-            currentStatements = ApplyHDDAtLevel(currentStatements, rootNode, GranularityLevel.Statement, compareTestInput);
-            Console.WriteLine($"After statement-level HDD: {currentStatements.Count} statements");
-
-            // If we can still reduce further, try expression-level reduction
-            if (currentStatements.Count > 1)
-            {
-                var expressionReducedStatements = ApplyHDDAtExpressionLevel(currentStatements, testFilePath, testName, compareTestInput);
-                if (expressionReducedStatements.Count < currentStatements.Count)
-                {
-                    currentStatements = expressionReducedStatements;
-                    Console.WriteLine($"After expression-level HDD: {currentStatements.Count} statements");
-                }
-            }
-
-            Console.WriteLine($"HDD completed. Final test has {currentStatements.Count} statements (reduced by {originalStatements.Count - currentStatements.Count})");
-            return currentStatements;
+            
+            // For now, just call the original DD algorithm directly
+            // The "hierarchy" aspect will be added later after we ensure basic functionality works
+            var reducedStatements = FindSmallestFailingInput(currentStatements, compareTestInput);
+            
+            Console.WriteLine($"HDD completed. Final test has {reducedStatements.Count} statements (reduced by {allStatements.Count - reducedStatements.Count})");
+            return reducedStatements;
         }
 
         /// <summary>
