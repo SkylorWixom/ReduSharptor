@@ -27,14 +27,31 @@ namespace ReduceFailingInput
         private static string outputFilePath { get; set; }
 
         /// <summary>
+        /// Temporary test file path used during algorithm execution
+        /// </summary>
+        private static string tempTestFile { get; set; }
+
+        /// <summary>
         /// Build and run the test. Return the result
         /// </summary>
         /// <param name="testStatements">Test statements to test if successful</param>
         /// <returns>True if the test is successful. False if unsuccessful</returns>
         static public bool BuildAndRunTest(List<StatementSyntax> testStatements)
         {
-            // Write out statements to file
-            Extentions.SetTestStatements(testExample, testExample, testName, testStatements);
+            // NEVER modify the original source file - use temporary copy
+            if (string.IsNullOrEmpty(tempTestFile))
+            {
+                // Create temporary file path
+                string tempDir = Path.Combine(Path.GetTempPath(), "ReduSharptor_Temp", DateTime.Now.Ticks.ToString());
+                Directory.CreateDirectory(tempDir);
+                tempTestFile = Path.Combine(tempDir, Path.GetFileName(testExample));
+                
+                // Copy original file to temp location
+                File.Copy(testExample, tempTestFile, true);
+            }
+
+            // Write out statements to TEMPORARY file only
+            Extentions.SetTestStatements(testExample, tempTestFile, testName, testStatements);
 
             Console.WriteLine($"Building current version of test with {testStatements.Count} statements...");
 
@@ -49,8 +66,7 @@ namespace ReduceFailingInput
 
             Console.WriteLine("Running test for failure...");
 
-
-            bool isSuccessful = Extentions.ExecuteCommand("dotnet", "test \"" + testProj + "\" --filter \"FullyQualifiedName=" + Extentions.GetTestCallString(testExample, testName) + "\"");
+            bool isSuccessful = Extentions.ExecuteCommand("dotnet", "test \"" + testProj + "\" --filter \"FullyQualifiedName=" + Extentions.GetTestCallString(tempTestFile, testName) + "\"");
 
             if (isSuccessful)
             {
@@ -157,11 +173,30 @@ namespace ReduceFailingInput
             }
             finally
             {
+                // Original source file was NEVER modified - no need to revert
+                Console.WriteLine("Original source file was never modified - preserved intact.");
+                
+                // Clean up temporary file
+                if (!string.IsNullOrEmpty(tempTestFile) && File.Exists(tempTestFile))
+                {
+                    try
+                    {
+                        string tempDir = Path.GetDirectoryName(tempTestFile);
+                        if (Directory.Exists(tempDir))
+                        {
+                            Directory.Delete(tempDir, true);
+                        }
+                        Console.WriteLine("Cleaned up temporary test files.");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Warning: Could not clean up temporary files: {ex.Message}");
+                    }
+                }
+                
                 if (hasOutputFile)
                 {
-                    // Revert the original test file back to the original form
-                    Extentions.SetTestStatements(testExample, testExample, testName, testStatements);
-                    Console.WriteLine("Reverting the original file.\nHere is the original file");
+                    Console.WriteLine("Here is the original file (unchanged)");
                 }
             }
 

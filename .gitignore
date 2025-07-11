@@ -385,6 +385,7 @@ FodyWeavers.xsd
 **/Original/
 **/Simplified/
 temp/
+**/ReduSharptor_Temp/
 
 # Project specific temporary files
 *.orig
@@ -398,4 +399,43 @@ temp/
 *.genruntimeconfig.cache
 *.GlobalUsings.g.cs
 **/obj/**
-**/bin/** 
+**/bin/**
+
+# All executable and library files
+*.exe
+*.dll
+*.pdb
+*.so
+*.dylib
+
+# All build configuration files
+*.runtimeconfig.json
+*.deps.json
+*.FileListAbsolute.txt
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# NuGet packages and cache
+*.nupkg
+*.snupkg
+packages/
+!packages/build/
+.nuget/
+nuget.exe
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db 
