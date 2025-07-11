@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "ReduSharptor": {
+      "commandName": "Project",
+      "commandLineArgs": "\"C:\\Users\\skwixom\\Documents\\Repos\\thesis\\ReduSharptor-1\\AdaptiveProgrammingTests\\ReduceTests\\HierarchicalTestCases.cs\" \"SimpleArithmetic_ShouldFail\" \"C:\\Users\\skwixom\\Documents\\Repos\\thesis\\ReduSharptor-1\\AdaptiveProgrammingTests\\ReduceTests\\ReduceTests.csproj\"\r\n\"C:\\Users\\skwixom\\Desktop\\temp\""
+    }
+  }
+}
