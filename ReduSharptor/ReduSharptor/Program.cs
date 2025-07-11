@@ -36,7 +36,7 @@ namespace ReduceFailingInput
             // Write out statements to file
             Extentions.SetTestStatements(testExample, testExample, testName, testStatements);
 
-            Console.WriteLine("Building current version of test.");
+            Console.WriteLine($"Building current version of test with {testStatements.Count} statements...");
 
             // Run the build command
             if (!Extentions.ExecuteCommand("dotnet", "build \"" + testProj + "\""))
@@ -130,12 +130,30 @@ namespace ReduceFailingInput
 
             try
             {
-                // Run algorithm with parameters
-                simplifiedStatements = Extentions.FindSmallestFailingInput<StatementSyntax>(testStatements, buildAndCompareTest);
+                // Run HDD algorithm with parameters
+                Console.WriteLine("Using Hierarchical Delta Debugging (HDD) for test reduction...");
+                simplifiedStatements = Extentions.FindSmallestFailingInputHDD(testExample, testName, buildAndCompareTest);
+                
+                // Fallback to original DD if HDD fails
+                if (simplifiedStatements == null || simplifiedStatements.Count == 0)
+                {
+                    Console.WriteLine("HDD failed, falling back to original Delta Debugging...");
+                    simplifiedStatements = Extentions.FindSmallestFailingInput<StatementSyntax>(testStatements, buildAndCompareTest);
+                }
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex.Message);
+                Console.WriteLine($"HDD Error: {ex.Message}");
+                Console.WriteLine("Falling back to original Delta Debugging...");
+                try
+                {
+                    simplifiedStatements = Extentions.FindSmallestFailingInput<StatementSyntax>(testStatements, buildAndCompareTest);
+                }
+                catch (Exception ddEx)
+                {
+                    Console.WriteLine($"DD Error: {ddEx.Message}");
+                    simplifiedStatements = testStatements; // Use original if both fail
+                }
             }
             finally
             {

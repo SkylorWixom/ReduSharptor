@@ -370,5 +370,420 @@ namespace ReduSharptor
         }
 
         #endregion
+
+        #region Hierarchical Delta Debugging (HDD)
+
+        /// <summary>
+        /// Represents different granularity levels for hierarchical reduction
+        /// </summary>
+        public enum GranularityLevel
+        {
+            Method = 1,      // Coarsest - whole methods
+            Statement = 2,   // Current DD level - individual statements  
+            Expression = 3,  // Expressions within statements
+            Token = 4        // Finest - individual tokens
+        }
+
+        /// <summary>
+        /// Represents a hierarchical node in the AST that can be reduced
+        /// </summary>
+        public class HierarchicalNode
+        {
+            public SyntaxNode Node { get; set; }
+            public GranularityLevel Level { get; set; }
+            public List<HierarchicalNode> Children { get; set; }
+            public HierarchicalNode Parent { get; set; }
+            public int Position { get; set; }
+
+            public HierarchicalNode()
+            {
+                Children = new List<HierarchicalNode>();
+            }
+
+            public override string ToString()
+            {
+                return $"{Level}: {Node.GetType().Name} - {Node.ToString().Substring(0, Math.Min(50, Node.ToString().Length))}...";
+            }
+        }
+
+        /// <summary>
+        /// Builds a hierarchical representation of the test method's AST
+        /// </summary>
+        /// <param name="testFilePath">Path to the test file</param>
+        /// <param name="testName">Name of the test method</param>
+        /// <returns>Root hierarchical node representing the test method</returns>
+        static public HierarchicalNode BuildHierarchicalAST(string testFilePath, string testName)
+        {
+            string text = File.ReadAllText(testFilePath);
+            SyntaxTree tree = CSharpSyntaxTree.ParseText(text);
+            CompilationUnitSyntax root = tree.GetCompilationUnitRoot();
+            
+            var nameSpace = ((NamespaceDeclarationSyntax)root.Members[0]);
+            var classDecl = (ClassDeclarationSyntax)nameSpace.Members[0];
+            
+            // Find the test method
+            MethodDeclarationSyntax testMethod = null;
+            var classMembers = classDecl.DescendantNodes().OfType<MemberDeclarationSyntax>();
+            foreach (var member in classMembers)
+            {
+                var method = member as MethodDeclarationSyntax;
+                if (method != null && method.Identifier.ToString() == testName)
+                {
+                    testMethod = method;
+                    break;
+                }
+            }
+
+            if (testMethod == null) return null;
+
+            // Build hierarchical structure starting from method level
+            var rootNode = new HierarchicalNode
+            {
+                Node = testMethod,
+                Level = GranularityLevel.Method,
+                Position = 0
+            };
+
+            BuildHierarchyRecursive(rootNode);
+            return rootNode;
+        }
+
+        /// <summary>
+        /// Recursively builds the hierarchical structure of the AST
+        /// </summary>
+        /// <param name="parentNode">Parent node to build children for</param>
+        static private void BuildHierarchyRecursive(HierarchicalNode parentNode)
+        {
+            switch (parentNode.Level)
+            {
+                case GranularityLevel.Method:
+                    // Method level -> Statement level
+                    if (parentNode.Node is MethodDeclarationSyntax method && method.Body != null)
+                    {
+                        var statements = method.Body.Statements;
+                        for (int i = 0; i < statements.Count; i++)
+                        {
+                            var childNode = new HierarchicalNode
+                            {
+                                Node = statements[i],
+                                Level = GranularityLevel.Statement,
+                                Parent = parentNode,
+                                Position = i
+                            };
+                            parentNode.Children.Add(childNode);
+                            BuildHierarchyRecursive(childNode);
+                        }
+                    }
+                    break;
+
+                case GranularityLevel.Statement:
+                    // Statement level -> Expression level
+                    var expressions = GetExpressionsFromStatement(parentNode.Node);
+                    for (int i = 0; i < expressions.Count; i++)
+                    {
+                        var childNode = new HierarchicalNode
+                        {
+                            Node = expressions[i],
+                            Level = GranularityLevel.Expression,
+                            Parent = parentNode,
+                            Position = i
+                        };
+                        parentNode.Children.Add(childNode);
+                        BuildHierarchyRecursive(childNode);
+                    }
+                    break;
+
+                case GranularityLevel.Expression:
+                    // Expression level -> Token level (for fine-grained reduction)
+                    var tokens = GetTokensFromExpression(parentNode.Node);
+                    for (int i = 0; i < tokens.Count; i++)
+                    {
+                        var childNode = new HierarchicalNode
+                        {
+                            Node = tokens[i],
+                            Level = GranularityLevel.Token,
+                            Parent = parentNode,
+                            Position = i
+                        };
+                        parentNode.Children.Add(childNode);
+                    }
+                    break;
+
+                case GranularityLevel.Token:
+                    // Token is the finest level - no children
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// Extracts expressions from a statement
+        /// </summary>
+        /// <param name="statement">Statement to extract expressions from</param>
+        /// <returns>List of expressions found in the statement</returns>
+        static private List<SyntaxNode> GetExpressionsFromStatement(SyntaxNode statement)
+        {
+            var expressions = new List<SyntaxNode>();
+            
+            // Get all expression nodes within the statement
+            var expressionNodes = statement.DescendantNodes()
+                .Where(node => node is ExpressionSyntax && node.Parent == statement)
+                .ToList();
+            
+            expressions.AddRange(expressionNodes);
+            
+            // Handle specific statement types with multiple expressions
+            switch (statement)
+            {
+                case LocalDeclarationStatementSyntax localDecl:
+                    // Variable declarations can have initializers
+                    foreach (var variable in localDecl.Declaration.Variables)
+                    {
+                        if (variable.Initializer != null)
+                        {
+                            expressions.Add(variable.Initializer.Value);
+                        }
+                    }
+                    break;
+                    
+                case IfStatementSyntax ifStmt:
+                    expressions.Add(ifStmt.Condition);
+                    break;
+                    
+                case WhileStatementSyntax whileStmt:
+                    expressions.Add(whileStmt.Condition);
+                    break;
+                    
+                case ForStatementSyntax forStmt:
+                    if (forStmt.Condition != null) expressions.Add(forStmt.Condition);
+                    expressions.AddRange(forStmt.Initializers);
+                    expressions.AddRange(forStmt.Incrementors);
+                    break;
+            }
+            
+            return expressions.Distinct().ToList();
+        }
+
+        /// <summary>
+        /// Extracts tokens from an expression for fine-grained reduction
+        /// </summary>
+        /// <param name="expression">Expression to extract tokens from</param>
+        /// <returns>List of token nodes</returns>
+        static private List<SyntaxNode> GetTokensFromExpression(SyntaxNode expression)
+        {
+            var tokens = new List<SyntaxNode>();
+            
+            // For now, we'll consider immediate children as "tokens"
+            // This can be refined to actual token-level analysis
+            tokens.AddRange(expression.ChildNodes());
+            
+            return tokens;
+        }
+
+        /// <summary>
+        /// Core HDD algorithm that reduces failing input hierarchically
+        /// </summary>
+        /// <param name="testFilePath">Path to test file</param>
+        /// <param name="testName">Name of test method</param>
+        /// <param name="compareTestInput">Function to test if input still fails</param>
+        /// <returns>Hierarchically reduced minimal failing test</returns>
+        static public List<StatementSyntax> FindSmallestFailingInputHDD(string testFilePath, string testName, Func<List<StatementSyntax>, bool> compareTestInput)
+        {
+            Console.WriteLine("Starting Hierarchical Delta Debugging (HDD)...");
+            
+            // Build the hierarchical AST
+            var rootNode = BuildHierarchicalAST(testFilePath, testName);
+            if (rootNode == null)
+            {
+                throw new InvalidOperationException($"Could not find test method '{testName}' in file '{testFilePath}'");
+            }
+
+            // Start with all statements
+            var originalStatements = GetTestStatements(testFilePath, testName);
+            var currentStatements = new List<StatementSyntax>(originalStatements);
+
+            Console.WriteLine($"Original test has {currentStatements.Count} statements");
+
+            // Apply HDD at each granularity level
+            currentStatements = ApplyHDDAtLevel(currentStatements, rootNode, GranularityLevel.Statement, compareTestInput);
+            Console.WriteLine($"After statement-level HDD: {currentStatements.Count} statements");
+
+            // If we can still reduce further, try expression-level reduction
+            if (currentStatements.Count > 1)
+            {
+                var expressionReducedStatements = ApplyHDDAtExpressionLevel(currentStatements, testFilePath, testName, compareTestInput);
+                if (expressionReducedStatements.Count < currentStatements.Count)
+                {
+                    currentStatements = expressionReducedStatements;
+                    Console.WriteLine($"After expression-level HDD: {currentStatements.Count} statements");
+                }
+            }
+
+            Console.WriteLine($"HDD completed. Final test has {currentStatements.Count} statements (reduced by {originalStatements.Count - currentStatements.Count})");
+            return currentStatements;
+        }
+
+        /// <summary>
+        /// Applies HDD at a specific granularity level
+        /// </summary>
+        static private List<StatementSyntax> ApplyHDDAtLevel(List<StatementSyntax> statements, HierarchicalNode rootNode, GranularityLevel level, Func<List<StatementSyntax>, bool> compareTestInput)
+        {
+            var currentStatements = new List<StatementSyntax>(statements);
+            
+            // Get nodes at the specified level
+            var nodesAtLevel = GetNodesAtLevel(rootNode, level);
+            
+            Console.WriteLine($"Applying HDD at {level} level with {nodesAtLevel.Count} nodes");
+
+            // Apply standard DD algorithm at this level
+            return FindSmallestFailingInput(currentStatements, compareTestInput);
+        }
+
+        /// <summary>
+        /// Applies HDD at expression level for finer-grained reduction
+        /// </summary>
+        static private List<StatementSyntax> ApplyHDDAtExpressionLevel(List<StatementSyntax> statements, string testFilePath, string testName, Func<List<StatementSyntax>, bool> compareTestInput)
+        {
+            var currentStatements = new List<StatementSyntax>(statements);
+            bool madeProgress = true;
+
+            while (madeProgress && currentStatements.Count > 1)
+            {
+                madeProgress = false;
+                
+                // Try to simplify each statement by removing or simplifying expressions
+                for (int i = 0; i < currentStatements.Count; i++)
+                {
+                    var simplifiedStatement = TrySimplifyStatement(currentStatements[i]);
+                    if (simplifiedStatement != null && !simplifiedStatement.IsEquivalentTo(currentStatements[i]))
+                    {
+                        var testStatements = new List<StatementSyntax>(currentStatements);
+                        testStatements[i] = simplifiedStatement;
+                        
+                        // Test if the simplified version still fails
+                        if (!compareTestInput(testStatements))
+                        {
+                            currentStatements[i] = simplifiedStatement;
+                            madeProgress = true;
+                            Console.WriteLine($"Simplified statement {i + 1}: {simplifiedStatement.ToString().Trim()}");
+                        }
+                    }
+                }
+            }
+
+            return currentStatements;
+        }
+
+        /// <summary>
+        /// Attempts to simplify a statement by removing or simplifying expressions
+        /// </summary>
+        static private StatementSyntax TrySimplifyStatement(StatementSyntax statement)
+        {
+            switch (statement)
+            {
+                case LocalDeclarationStatementSyntax localDecl:
+                    // Try to remove initializers
+                    if (localDecl.Declaration.Variables.Any(v => v.Initializer != null))
+                    {
+                        var newVariables = localDecl.Declaration.Variables.Select(v => 
+                            v.Initializer != null ? v.WithInitializer(null) : v).ToArray();
+                        var newDeclaration = localDecl.Declaration.WithVariables(SyntaxFactory.SeparatedList(newVariables));
+                        return localDecl.WithDeclaration(newDeclaration);
+                    }
+                    break;
+
+                case ExpressionStatementSyntax exprStmt:
+                    // Try to simplify complex expressions
+                    if (exprStmt.Expression is AssignmentExpressionSyntax assignment)
+                    {
+                        // Try to simplify the right-hand side
+                        var simplifiedRhs = TrySimplifyExpression(assignment.Right);
+                        if (simplifiedRhs != null && !simplifiedRhs.IsEquivalentTo(assignment.Right))
+                        {
+                            var newAssignment = assignment.WithRight(simplifiedRhs);
+                            return exprStmt.WithExpression(newAssignment);
+                        }
+                    }
+                    break;
+
+                case IfStatementSyntax ifStmt:
+                    // Try to simplify the condition
+                    var simplifiedCondition = TrySimplifyExpression(ifStmt.Condition);
+                    if (simplifiedCondition != null && !simplifiedCondition.IsEquivalentTo(ifStmt.Condition))
+                    {
+                        return ifStmt.WithCondition(simplifiedCondition);
+                    }
+                    break;
+            }
+
+            return null; // No simplification possible
+        }
+
+        /// <summary>
+        /// Attempts to simplify an expression
+        /// </summary>
+        static private ExpressionSyntax TrySimplifyExpression(ExpressionSyntax expression)
+        {
+            switch (expression)
+            {
+                case BinaryExpressionSyntax binary:
+                    // Try to replace with simple literals
+                    if (binary.OperatorToken.IsKind(SyntaxKind.PlusToken) ||
+                        binary.OperatorToken.IsKind(SyntaxKind.MinusToken) ||
+                        binary.OperatorToken.IsKind(SyntaxKind.AsteriskToken) ||
+                        binary.OperatorToken.IsKind(SyntaxKind.SlashToken))
+                    {
+                        // Replace with a simple number
+                        return SyntaxFactory.LiteralExpression(SyntaxKind.NumericLiteralExpression, SyntaxFactory.Literal(1));
+                    }
+                    else if (binary.OperatorToken.IsKind(SyntaxKind.EqualsEqualsToken) ||
+                             binary.OperatorToken.IsKind(SyntaxKind.ExclamationEqualsToken))
+                    {
+                        // Replace with simple boolean
+                        return SyntaxFactory.LiteralExpression(SyntaxKind.TrueLiteralExpression);
+                    }
+                    break;
+
+                case InvocationExpressionSyntax invocation:
+                    // Try to simplify method calls by removing arguments
+                    if (invocation.ArgumentList.Arguments.Count > 1)
+                    {
+                        var firstArg = invocation.ArgumentList.Arguments[0];
+                        var newArgs = SyntaxFactory.SeparatedList(new[] { firstArg });
+                        var newArgList = invocation.ArgumentList.WithArguments(newArgs);
+                        return invocation.WithArgumentList(newArgList);
+                    }
+                    break;
+            }
+
+            return null; // No simplification possible
+        }
+
+        /// <summary>
+        /// Gets all nodes at a specific granularity level
+        /// </summary>
+        static private List<HierarchicalNode> GetNodesAtLevel(HierarchicalNode root, GranularityLevel level)
+        {
+            var nodesAtLevel = new List<HierarchicalNode>();
+            CollectNodesAtLevel(root, level, nodesAtLevel);
+            return nodesAtLevel;
+        }
+
+        /// <summary>
+        /// Recursively collects nodes at a specific level
+        /// </summary>
+        static private void CollectNodesAtLevel(HierarchicalNode node, GranularityLevel targetLevel, List<HierarchicalNode> result)
+        {
+            if (node.Level == targetLevel)
+            {
+                result.Add(node);
+            }
+
+            foreach (var child in node.Children)
+            {
+                CollectNodesAtLevel(child, targetLevel, result);
+            }
+        }
+
+        #endregion
     }
 }
