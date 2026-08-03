@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "ReduSharptor": {
+      "commandName": "Project",
+      "commandLineArgs": "\"C:\\Users\\skwixom\\source\\repos\\ReduSharptor\\AdaptiveProgrammingTests\\ReduceTests\\UnitTest1.cs\" \"Test1\" \"C:\\Users\\skwixom\\source\\repos\\ReduSharptor\\AdaptiveProgrammingTests\\ReduceTests\\ReduceTests.csproj\" \"C:\\Users\\skwixom\\Desktop\\temp\""
+    }
+  }
+}

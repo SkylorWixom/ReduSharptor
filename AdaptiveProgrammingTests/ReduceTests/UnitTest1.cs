@@ -5,7 +5,7 @@ namespace ReduceTests
 {
     public class UnitTest2
     {
-        //[Fact]
+        [Fact]
         public void Test1()
         {
 
