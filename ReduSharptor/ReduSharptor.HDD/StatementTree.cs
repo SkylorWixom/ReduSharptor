@@ -56,6 +56,43 @@ namespace ReduSharptor.HDD
             SyntaxNode newRoot = _pristineRoot.ReplaceNode(Method, newMethod);
             File.WriteAllText(destinationPath, newRoot.ToFullString());
         }
+
+        /// <summary>
+        /// Renders the full test file with the given statements removed, wherever
+        /// they live in the hierarchy (top level, inside blocks, inside lambda
+        /// bodies). All removed nodes must come from this rewriter's pristine
+        /// parse. Roslyn removes them all in one pass, so nested and top-level
+        /// removals combine safely.
+        /// </summary>
+        public string Render(IReadOnlyCollection<SyntaxNode> removedNodes)
+        {
+            if (removedNodes.Count == 0)
+            {
+                return _pristineRoot.ToFullString();
+            }
+
+            MethodDeclarationSyntax? newMethod = Method.RemoveNodes(removedNodes, SyntaxRemoveOptions.KeepNoTrivia);
+            if (newMethod == null)
+            {
+                // Cannot happen while removal is restricted to block-parented
+                // statements, but fail loudly rather than write a broken file.
+                throw new InvalidOperationException("Removing the requested nodes destroyed the method itself.");
+            }
+
+            SyntaxNode newRoot = _pristineRoot.ReplaceNode(Method, newMethod);
+            return newRoot.ToFullString();
+        }
+
+        /// <summary>
+        /// The method body with the given nodes removed, for display.
+        /// </summary>
+        public string RenderMethod(IReadOnlyCollection<SyntaxNode> removedNodes)
+        {
+            MethodDeclarationSyntax? newMethod = removedNodes.Count == 0
+                ? Method
+                : Method.RemoveNodes(removedNodes, SyntaxRemoveOptions.KeepNoTrivia);
+            return newMethod?.ToString() ?? "";
+        }
     }
 
     /// <summary>

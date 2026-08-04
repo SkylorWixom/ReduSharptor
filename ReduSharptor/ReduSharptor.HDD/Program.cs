@@ -50,8 +50,8 @@ namespace ReduSharptor.HDD
                 // Milestone 2: show the hierarchy the reducer will walk. Reads the
                 // original file only; creates and changes nothing.
                 var method = StatementTree.FindTestMethod(testFilePath, testMethodName);
-                var hierarchy = StatementTree.Build(method);
-                StatementTree.Print(hierarchy, testMethodName);
+                var inspected = StatementTree.Build(method);
+                StatementTree.Print(inspected, testMethodName);
                 return 0;
             }
 
@@ -84,32 +84,32 @@ namespace ReduSharptor.HDD
             Directory.CreateDirectory(resultsDir);
             File.WriteAllText(Path.Combine(resultsDir, "Original_" + Path.GetFileName(testFilePath)), rewriter.PristineText);
 
-            // Milestone 4: flat reduction over level 0, the baseline-equivalent pass.
-            var level0 = StatementTree.Build(rewriter.Method);
-            Console.WriteLine("Starting flat reduction (level 0): " + level0.Count + " statements");
+            // Milestone 5: full Hierarchical Delta Debugging. Top-down levels,
+            // ddmin per level, whole sweeps repeated until nothing changes.
+            var hierarchy = StatementTree.Build(rewriter.Method);
+            Console.WriteLine("Starting HDD reduction...");
+            Console.WriteLine();
 
             var reducer = new HddReducer(rewriter, oracle, workspace.WorkingTestFile);
-            var reduced = reducer.ReduceFlat(level0);
+            ReductionResult result = reducer.Reduce(hierarchy);
 
             File.WriteAllText(Path.Combine(resultsDir, "Simplified_" + Path.GetFileName(testFilePath)),
                 File.ReadAllText(workspace.WorkingTestFile));
 
             Console.WriteLine();
-            Console.WriteLine("Reduction finished: " + level0.Count + " -> " + reduced.Count + " statements");
+            Console.WriteLine("Reduction finished: " + result.StatementsBefore + " -> " + result.StatementsAfter +
+                              " statements in " + result.Sweeps + " sweep(s)");
             Console.WriteLine("Oracle evaluations: " + oracle.Evaluations + " (cache hits: " + oracle.CacheHits + ")");
             foreach (var pair in reducer.VerdictCounts.OrderBy(p => p.Key))
             {
                 Console.WriteLine("  " + pair.Key + ": " + pair.Value);
             }
             Console.WriteLine();
-            Console.WriteLine("Reduced test:");
-            foreach (var statement in reduced)
-            {
-                Console.WriteLine("  " + statement.ToString().Trim());
-            }
+            Console.WriteLine("Reduced test method:");
+            Console.WriteLine(result.FinalMethodText);
             Console.WriteLine();
             Console.WriteLine("Results folder: " + resultsDir);
-            Console.WriteLine("Milestone 4 complete: flat (level 0) reduction. HDD levels arrive in milestone 5.");
+            Console.WriteLine("Milestone 5 complete: hierarchical reduction with fixpoint sweeps.");
 
             return 0;
         }

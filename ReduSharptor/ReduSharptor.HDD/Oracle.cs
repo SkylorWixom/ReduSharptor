@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Linq;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace ReduSharptor.HDD
 {
@@ -65,14 +64,13 @@ namespace ReduSharptor.HDD
         public int CacheHits { get; private set; }
 
         /// <summary>
-        /// A stable identity for a candidate: the hash of its statements' text.
-        /// Two candidates with the same statements in the same order get the same
-        /// key, so the cache answers the second one for free.
+        /// A stable identity for a candidate: the hash of the exact file content
+        /// the candidate produces. Identical candidate states, however they were
+        /// reached, get the same key, so the cache answers repeats for free.
         /// </summary>
-        public static string ComputeKey(IReadOnlyList<StatementSyntax> statements)
+        public static string ComputeKey(string candidateFileContent)
         {
-            string combined = string.Join("\n", statements.Select(s => s.ToFullString()));
-            byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(combined));
+            byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(candidateFileContent));
             return Convert.ToHexString(hash);
         }
 
