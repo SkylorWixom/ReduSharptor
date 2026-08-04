@@ -1,6 +1,8 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Linq;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace ReduSharptor.HDD
 {
@@ -56,10 +58,42 @@ namespace ReduSharptor.HDD
 
         // Verdict cache keyed by candidate content hash. Ddmin regenerates
         // identical configurations, so repeated states are answered from here
-        // without a build or test run. Wired up when candidates arrive (milestone 4).
+        // without a build or test run.
         private readonly Dictionary<string, Verdict> _verdictCache = new();
 
         public int Evaluations => _evaluations;
+        public int CacheHits { get; private set; }
+
+        /// <summary>
+        /// A stable identity for a candidate: the hash of its statements' text.
+        /// Two candidates with the same statements in the same order get the same
+        /// key, so the cache answers the second one for free.
+        /// </summary>
+        public static string ComputeKey(IReadOnlyList<StatementSyntax> statements)
+        {
+            string combined = string.Join("\n", statements.Select(s => s.ToFullString()));
+            byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(combined));
+            return Convert.ToHexString(hash);
+        }
+
+        /// <summary>
+        /// Judges a candidate: answers from the cache when this exact candidate was
+        /// seen before; otherwise applies it (writes the test file), evaluates the
+        /// working copy, and caches the verdict.
+        /// </summary>
+        public Verdict JudgeCandidate(string candidateKey, Action applyCandidate, string label)
+        {
+            if (_verdictCache.TryGetValue(candidateKey, out Verdict cached))
+            {
+                CacheHits++;
+                return cached;
+            }
+
+            applyCandidate();
+            Verdict verdict = CheckCurrentState(label);
+            _verdictCache[candidateKey] = verdict;
+            return verdict;
+        }
 
         public Oracle(string workingTestProject, string fullTestName, string targetFramework, string runDirectory)
         {

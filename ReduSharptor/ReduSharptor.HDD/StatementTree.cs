@@ -26,6 +26,39 @@ namespace ReduSharptor.HDD
     }
 
     /// <summary>
+    /// Holds the pristine parse of the test file and writes candidate versions of
+    /// it (design decision 4: the working copy's test file is the only file ever
+    /// written). Every candidate is produced from the pristine tree, never from a
+    /// previously written candidate, so no reduction step can corrupt the next.
+    /// </summary>
+    public class TestFileRewriter
+    {
+        private readonly SyntaxNode _pristineRoot;
+
+        public MethodDeclarationSyntax Method { get; }
+        public string PristineText { get; }
+
+        public TestFileRewriter(string testFilePath, string testMethodName)
+        {
+            PristineText = File.ReadAllText(testFilePath);
+            SyntaxTree tree = CSharpSyntaxTree.ParseText(PristineText);
+            _pristineRoot = tree.GetRoot();
+            Method = StatementTree.FindTestMethod(tree, testMethodName, testFilePath);
+        }
+
+        /// <summary>
+        /// Writes a version of the test file in which the test method's body
+        /// contains exactly the given statements, in the given order.
+        /// </summary>
+        public void Write(IReadOnlyList<StatementSyntax> statements, string destinationPath)
+        {
+            MethodDeclarationSyntax newMethod = Method.WithBody(SyntaxFactory.Block(statements));
+            SyntaxNode newRoot = _pristineRoot.ReplaceNode(Method, newMethod);
+            File.WriteAllText(destinationPath, newRoot.ToFullString());
+        }
+    }
+
+    /// <summary>
     /// Builds the statement hierarchy for a test method (design decision 2).
     /// Statements are the only unit. BlockStmts are transparent containers and
     /// never appear as nodes themselves; the statements inside a block belong to
@@ -41,7 +74,17 @@ namespace ReduSharptor.HDD
         public static MethodDeclarationSyntax FindTestMethod(string testFilePath, string testMethodName)
         {
             SyntaxTree tree = CSharpSyntaxTree.ParseText(File.ReadAllText(testFilePath));
+            return FindTestMethod(tree, testMethodName, testFilePath);
+        }
 
+        /// <summary>
+        /// Same search over an already-parsed tree. The rewriter uses this so that
+        /// the method (and the statement nodes built from it) belong to the exact
+        /// tree it rewrites; mixing nodes from two parses of the same file would
+        /// make Roslyn's ReplaceNode silently fail to match.
+        /// </summary>
+        public static MethodDeclarationSyntax FindTestMethod(SyntaxTree tree, string testMethodName, string sourceDescription)
+        {
             var matches = tree.GetRoot()
                 .DescendantNodes()
                 .OfType<MethodDeclarationSyntax>()
@@ -51,7 +94,7 @@ namespace ReduSharptor.HDD
             if (matches.Count == 0)
             {
                 throw new InvalidOperationException(
-                    "No method named '" + testMethodName + "' found in " + testFilePath);
+                    "No method named '" + testMethodName + "' found in " + sourceDescription);
             }
             if (matches.Count > 1)
             {

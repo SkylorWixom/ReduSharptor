@@ -66,28 +66,52 @@ namespace ReduSharptor.HDD
             Console.WriteLine("Copied test project: " + workspace.WorkingTestProject);
             Console.WriteLine();
 
-            // Milestone 3: capture the failure fingerprint from the untouched
-            // working copy, then judge that same untouched state as a self-check.
-            // The only acceptable self-check verdict is Preserved.
-            var testMethod = StatementTree.FindTestMethod(workspace.WorkingTestFile, testMethodName);
-            string fullTestName = StatementTree.GetFullTestName(testMethod);
+            // The rewriter owns the pristine parse of the working copy's test file.
+            // The method it found, the hierarchy, and every candidate all come from
+            // that single parse.
+            var rewriter = new TestFileRewriter(workspace.WorkingTestFile, testMethodName);
+            string fullTestName = StatementTree.GetFullTestName(rewriter.Method);
             Console.WriteLine("Full test name: " + fullTestName);
             Console.WriteLine("Capturing failure fingerprint (builds and runs the working copy)...");
 
             var oracle = new Oracle(workspace.WorkingTestProject, fullTestName, targetFramework, workspace.RunDirectory);
             FailureFingerprint fingerprint = oracle.CaptureFingerprint();
-
             Console.WriteLine("  Fingerprint message: " + fingerprint.NormalizedMessage);
             Console.WriteLine();
-            Console.WriteLine("Self-check: judging the untouched working copy against the fingerprint...");
-            Verdict verdict = oracle.CheckCurrentState("self-check");
-            Console.WriteLine("  Verdict: " + verdict);
-            Console.WriteLine();
-            Console.WriteLine(verdict == Verdict.Preserved
-                ? "Milestone 3 complete: oracle is working. Reduction arrives in milestone 4."
-                : "PROBLEM: self-check should be Preserved. Something is wrong with the oracle or the setup.");
 
-            return verdict == Verdict.Preserved ? 0 : 1;
+            // Snapshot the original test before anything is reduced.
+            string resultsDir = Path.Combine(workspace.RunDirectory, "results");
+            Directory.CreateDirectory(resultsDir);
+            File.WriteAllText(Path.Combine(resultsDir, "Original_" + Path.GetFileName(testFilePath)), rewriter.PristineText);
+
+            // Milestone 4: flat reduction over level 0, the baseline-equivalent pass.
+            var level0 = StatementTree.Build(rewriter.Method);
+            Console.WriteLine("Starting flat reduction (level 0): " + level0.Count + " statements");
+
+            var reducer = new HddReducer(rewriter, oracle, workspace.WorkingTestFile);
+            var reduced = reducer.ReduceFlat(level0);
+
+            File.WriteAllText(Path.Combine(resultsDir, "Simplified_" + Path.GetFileName(testFilePath)),
+                File.ReadAllText(workspace.WorkingTestFile));
+
+            Console.WriteLine();
+            Console.WriteLine("Reduction finished: " + level0.Count + " -> " + reduced.Count + " statements");
+            Console.WriteLine("Oracle evaluations: " + oracle.Evaluations + " (cache hits: " + oracle.CacheHits + ")");
+            foreach (var pair in reducer.VerdictCounts.OrderBy(p => p.Key))
+            {
+                Console.WriteLine("  " + pair.Key + ": " + pair.Value);
+            }
+            Console.WriteLine();
+            Console.WriteLine("Reduced test:");
+            foreach (var statement in reduced)
+            {
+                Console.WriteLine("  " + statement.ToString().Trim());
+            }
+            Console.WriteLine();
+            Console.WriteLine("Results folder: " + resultsDir);
+            Console.WriteLine("Milestone 4 complete: flat (level 0) reduction. HDD levels arrive in milestone 5.");
+
+            return 0;
         }
 
         static void PrintUsage()
