@@ -65,9 +65,29 @@ namespace ReduSharptor.HDD
             Console.WriteLine("Copied test file:    " + workspace.WorkingTestFile);
             Console.WriteLine("Copied test project: " + workspace.WorkingTestProject);
             Console.WriteLine();
-            Console.WriteLine("Milestone 1 complete: working copy created. Reduction arrives in later milestones.");
 
-            return 0;
+            // Milestone 3: capture the failure fingerprint from the untouched
+            // working copy, then judge that same untouched state as a self-check.
+            // The only acceptable self-check verdict is Preserved.
+            var testMethod = StatementTree.FindTestMethod(workspace.WorkingTestFile, testMethodName);
+            string fullTestName = StatementTree.GetFullTestName(testMethod);
+            Console.WriteLine("Full test name: " + fullTestName);
+            Console.WriteLine("Capturing failure fingerprint (builds and runs the working copy)...");
+
+            var oracle = new Oracle(workspace.WorkingTestProject, fullTestName, targetFramework, workspace.RunDirectory);
+            FailureFingerprint fingerprint = oracle.CaptureFingerprint();
+
+            Console.WriteLine("  Fingerprint message: " + fingerprint.NormalizedMessage);
+            Console.WriteLine();
+            Console.WriteLine("Self-check: judging the untouched working copy against the fingerprint...");
+            Verdict verdict = oracle.CheckCurrentState("self-check");
+            Console.WriteLine("  Verdict: " + verdict);
+            Console.WriteLine();
+            Console.WriteLine(verdict == Verdict.Preserved
+                ? "Milestone 3 complete: oracle is working. Reduction arrives in milestone 4."
+                : "PROBLEM: self-check should be Preserved. Something is wrong with the oracle or the setup.");
+
+            return verdict == Verdict.Preserved ? 0 : 1;
         }
 
         static void PrintUsage()

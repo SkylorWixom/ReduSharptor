@@ -63,6 +63,32 @@ namespace ReduSharptor.HDD
         }
 
         /// <summary>
+        /// Derives the fully qualified test name (namespace.class.method) that
+        /// dotnet test's FullyQualifiedName filter expects. Handles both
+        /// block-scoped and file-scoped namespaces.
+        /// </summary>
+        public static string GetFullTestName(MethodDeclarationSyntax method)
+        {
+            var parts = new List<string> { method.Identifier.Text };
+
+            SyntaxNode? current = method.Parent;
+            while (current != null)
+            {
+                if (current is ClassDeclarationSyntax cls)
+                {
+                    parts.Insert(0, cls.Identifier.Text);
+                }
+                else if (current is BaseNamespaceDeclarationSyntax ns)
+                {
+                    parts.Insert(0, ns.Name.ToString());
+                }
+                current = current.Parent;
+            }
+
+            return string.Join(".", parts);
+        }
+
+        /// <summary>
         /// Builds the level-0 statement nodes for the method body and, recursively,
         /// the nested levels below each Tree statement.
         /// </summary>
