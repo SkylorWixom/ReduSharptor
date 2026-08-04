@@ -3,6 +3,10 @@
     "ReduSharptor.HDD": {
       "commandName": "Project",
       "commandLineArgs": "\"C:\\Users\\skwixom\\source\\repos\\Fleck-master\\src\\Fleck.Tests\\RequestParserTests.cs\" \"ShouldReadHeaders\" \"C:\\Users\\skwixom\\source\\repos\\Fleck-master\\src\\Fleck.Tests\\Fleck.Tests.csproj\" \"C:\\Users\\skwixom\\Desktop\\temp\\hdd-runs\" \"net45\""
+    },
+    "ReduSharptor.HDD (inspect)": {
+      "commandName": "Project",
+      "commandLineArgs": "\"C:\\Users\\skwixom\\source\\repos\\Fleck-master\\src\\Fleck.Tests\\WebSocketConnectionTests.cs\" \"ShouldCallOnErrorWhenError\" \"C:\\Users\\skwixom\\source\\repos\\Fleck-master\\src\\Fleck.Tests\\Fleck.Tests.csproj\" \"C:\\Users\\skwixom\\Desktop\\temp\\hdd-runs\" \"net45\" --inspect"
     }
   }
 }

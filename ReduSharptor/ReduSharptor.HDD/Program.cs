@@ -9,6 +9,11 @@ namespace ReduSharptor.HDD
     {
         static int Main(string[] args)
         {
+            // --inspect prints the test's statement hierarchy and stops; nothing
+            // is copied or modified. It can appear anywhere among the arguments.
+            bool inspect = args.Contains("--inspect");
+            args = args.Where(a => a != "--inspect").ToArray();
+
             if (args.Length < 4 || args.Length > 5)
             {
                 PrintUsage();
@@ -40,6 +45,16 @@ namespace ReduSharptor.HDD
             Console.WriteLine("  Target framework: " + targetFramework);
             Console.WriteLine();
 
+            if (inspect)
+            {
+                // Milestone 2: show the hierarchy the reducer will walk. Reads the
+                // original file only; creates and changes nothing.
+                var method = StatementTree.FindTestMethod(testFilePath, testMethodName);
+                var hierarchy = StatementTree.Build(method);
+                StatementTree.Print(hierarchy, testMethodName);
+                return 0;
+            }
+
             // Milestone 1: create the run folder and the working copy of the subject
             // project. The original source tree is never written to; every later
             // milestone (candidate edits, builds, test runs) happens inside the copy.
@@ -65,6 +80,9 @@ namespace ReduSharptor.HDD
             Console.WriteLine("  testProjPath     Full path to the .csproj of the test project.");
             Console.WriteLine("  outputDir        Folder (outside the subject project) where run folders are created.");
             Console.WriteLine("  targetFramework  Optional. Framework passed to dotnet test. Defaults to net45.");
+            Console.WriteLine();
+            Console.WriteLine("Flags:");
+            Console.WriteLine("  --inspect        Print the test's statement hierarchy (levels, Tree/NonTree) and exit.");
         }
     }
 }
