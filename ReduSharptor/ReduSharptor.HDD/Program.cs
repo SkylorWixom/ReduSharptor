@@ -9,10 +9,14 @@ namespace ReduSharptor.HDD
     {
         static int Main(string[] args)
         {
-            // --inspect prints the test's statement hierarchy and stops; nothing
-            // is copied or modified. It can appear anywhere among the arguments.
+            // Flags can appear anywhere among the arguments.
+            // --inspect prints the test's statement hierarchy and stops.
+            // --verbose mirrors per-candidate removal detail onto the console.
             bool inspect = args.Contains("--inspect");
-            args = args.Where(a => a != "--inspect").ToArray();
+            bool verbose = args.Contains("--verbose");
+            args = args.Where(a => a != "--inspect" && a != "--verbose").ToArray();
+
+            var totalTime = System.Diagnostics.Stopwatch.StartNew();
 
             if (args.Length < 4 || args.Length > 5)
             {
@@ -84,32 +88,30 @@ namespace ReduSharptor.HDD
             Directory.CreateDirectory(resultsDir);
             File.WriteAllText(Path.Combine(resultsDir, "Original_" + Path.GetFileName(testFilePath)), rewriter.PristineText);
 
-            // Milestone 5: full Hierarchical Delta Debugging. Top-down levels,
-            // ddmin per level, whole sweeps repeated until nothing changes.
+            // Full Hierarchical Delta Debugging: top-down levels, ddmin per level,
+            // whole sweeps repeated until nothing changes. Every candidate is
+            // recorded in run.log and candidates.csv.
             var hierarchy = StatementTree.Build(rewriter.Method);
-            Console.WriteLine("Starting HDD reduction...");
-            Console.WriteLine();
 
-            var reducer = new HddReducer(rewriter, oracle, workspace.WorkingTestFile);
+            using var runLog = new RunLog(workspace.RunDirectory, verbose);
+            runLog.Info("Starting HDD reduction...");
+            runLog.Info("");
+
+            var reducer = new HddReducer(rewriter, oracle, workspace.WorkingTestFile, runLog);
             ReductionResult result = reducer.Reduce(hierarchy);
 
             File.WriteAllText(Path.Combine(resultsDir, "Simplified_" + Path.GetFileName(testFilePath)),
                 File.ReadAllText(workspace.WorkingTestFile));
 
-            Console.WriteLine();
-            Console.WriteLine("Reduction finished: " + result.StatementsBefore + " -> " + result.StatementsAfter +
-                              " statements in " + result.Sweeps + " sweep(s)");
-            Console.WriteLine("Oracle evaluations: " + oracle.Evaluations + " (cache hits: " + oracle.CacheHits + ")");
-            foreach (var pair in reducer.VerdictCounts.OrderBy(p => p.Key))
-            {
-                Console.WriteLine("  " + pair.Key + ": " + pair.Value);
-            }
-            Console.WriteLine();
-            Console.WriteLine("Reduced test method:");
-            Console.WriteLine(result.FinalMethodText);
-            Console.WriteLine();
-            Console.WriteLine("Results folder: " + resultsDir);
-            Console.WriteLine("Milestone 5 complete: hierarchical reduction with fixpoint sweeps.");
+            totalTime.Stop();
+            runLog.WriteSummary(result, fingerprint, oracle.Evaluations, oracle.CacheHits,
+                reducer.VerdictCounts, totalTime.Elapsed);
+
+            runLog.Info("");
+            runLog.Info("Reduced test method:");
+            runLog.Info(result.FinalMethodText);
+            runLog.Info("");
+            runLog.Info("Run folder contents: working\\ (reduced copy), results\\ (snapshots), oracle\\ (fingerprint + TRX), run.log, candidates.csv, summary.txt");
 
             return 0;
         }
@@ -127,6 +129,7 @@ namespace ReduSharptor.HDD
             Console.WriteLine();
             Console.WriteLine("Flags:");
             Console.WriteLine("  --inspect        Print the test's statement hierarchy (levels, Tree/NonTree) and exit.");
+            Console.WriteLine("  --verbose        Also print each candidate's attempted removals on the console.");
         }
     }
 }

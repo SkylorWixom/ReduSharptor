@@ -2,7 +2,7 @@
   "profiles": {
     "ReduSharptor.HDD": {
       "commandName": "Project",
-      "commandLineArgs": "\"C:\\Users\\skwixom\\source\\repos\\Fleck-master\\src\\Fleck.Tests\\RequestParserTests.cs\" \"ShouldReadHeaders\" \"C:\\Users\\skwixom\\source\\repos\\Fleck-master\\src\\Fleck.Tests\\Fleck.Tests.csproj\" \"C:\\Users\\skwixom\\Desktop\\temp\\hdd-runs\" \"net45\""
+      "commandLineArgs": "\"C:\\Users\\skwixom\\source\\repos\\Fleck-master\\src\\Fleck.Tests\\RequestParserTests.cs\" \"ShouldReadHostHeaderNested\" \"C:\\Users\\skwixom\\source\\repos\\Fleck-master\\src\\Fleck.Tests\\Fleck.Tests.csproj\" \"C:\\Users\\skwixom\\Desktop\\temp\\hdd-runs\" \"net45\""
     },
     "ReduSharptor.HDD (inspect)": {
       "commandName": "Project",

@@ -11,6 +11,10 @@ namespace ReduSharptor.HDD
     {
         public int StatementsBefore { get; init; }
         public int StatementsAfter { get; init; }
+        public int TreeBefore { get; init; }
+        public int TreeAfter { get; init; }
+        public int NonTreeBefore { get; init; }
+        public int NonTreeAfter { get; init; }
         public int Sweeps { get; init; }
         public string FinalMethodText { get; init; } = "";
     }
@@ -29,31 +33,33 @@ namespace ReduSharptor.HDD
         private readonly TestFileRewriter _rewriter;
         private readonly Oracle _oracle;
         private readonly string _workingTestFile;
+        private readonly RunLog _runLog;
 
         private readonly HashSet<SyntaxNode> _removed = new();
         private readonly Dictionary<Verdict, int> _verdictCounts = new();
         private int _candidateIndex;
+        private int _currentSweep;
 
         public IReadOnlyDictionary<Verdict, int> VerdictCounts => _verdictCounts;
 
-        public HddReducer(TestFileRewriter rewriter, Oracle oracle, string workingTestFile)
+        public HddReducer(TestFileRewriter rewriter, Oracle oracle, string workingTestFile, RunLog runLog)
         {
             _rewriter = rewriter;
             _oracle = oracle;
             _workingTestFile = workingTestFile;
+            _runLog = runLog;
         }
 
         public ReductionResult Reduce(List<StatementNode> hierarchy)
         {
-            int statementsBefore = CountAlive(hierarchy);
-            int sweep = 0;
+            (int statementsBefore, int treeBefore, int nonTreeBefore) = CountAlive(hierarchy);
             bool changedInSweep = true;
 
             while (changedInSweep)
             {
-                sweep++;
+                _currentSweep++;
                 changedInSweep = false;
-                Console.WriteLine("Sweep " + sweep + ":");
+                _runLog.Info("Sweep " + _currentSweep + ":");
 
                 for (int level = 0; ; level++)
                 {
@@ -63,7 +69,7 @@ namespace ReduSharptor.HDD
                         break;
                     }
 
-                    Console.WriteLine("  Level " + level + ": " + nodes.Count + " removable statement(s)");
+                    _runLog.Info("  Level " + level + ": " + nodes.Count + " removable statement(s)");
 
                     // First try pruning the whole level at once; when a level is
                     // entirely junk this saves every finer-grained attempt, and it
@@ -95,11 +101,17 @@ namespace ReduSharptor.HDD
             string finalText = _rewriter.Render(_removed);
             File.WriteAllText(_workingTestFile, finalText);
 
+            (int statementsAfter, int treeAfter, int nonTreeAfter) = CountAlive(hierarchy);
+
             return new ReductionResult
             {
                 StatementsBefore = statementsBefore,
-                StatementsAfter = CountAlive(hierarchy),
-                Sweeps = sweep,
+                StatementsAfter = statementsAfter,
+                TreeBefore = treeBefore,
+                TreeAfter = treeAfter,
+                NonTreeBefore = nonTreeBefore,
+                NonTreeAfter = nonTreeAfter,
+                Sweeps = _currentSweep,
                 FinalMethodText = _rewriter.RenderMethod(_removed)
             };
         }
@@ -111,11 +123,13 @@ namespace ReduSharptor.HDD
         private bool JudgeKeptSubset(List<StatementNode> levelNodes, List<StatementNode> kept, int level)
         {
             var candidateRemoved = new HashSet<SyntaxNode>(_removed);
+            var attemptedRemove = new List<StatementNode>();
             foreach (StatementNode node in levelNodes)
             {
                 if (!kept.Contains(node))
                 {
                     candidateRemoved.Add(node.Syntax);
+                    attemptedRemove.Add(node);
                 }
             }
 
@@ -125,11 +139,15 @@ namespace ReduSharptor.HDD
             _candidateIndex++;
             string label = "cand_" + _candidateIndex.ToString("D3");
 
+            int cacheHitsBefore = _oracle.CacheHits;
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             Verdict verdict = _oracle.JudgeCandidate(key, () => File.WriteAllText(_workingTestFile, text), label);
+            stopwatch.Stop();
+            bool fromCache = _oracle.CacheHits > cacheHitsBefore;
 
             _verdictCounts[verdict] = _verdictCounts.GetValueOrDefault(verdict) + 1;
-            Console.WriteLine("    [" + label + "] L" + level + " keep " + kept.Count + "/" + levelNodes.Count
-                              + " -> " + verdict);
+            _runLog.Candidate(label, _currentSweep, level, kept, attemptedRemove, levelNodes.Count,
+                verdict, fromCache, stopwatch.ElapsedMilliseconds);
 
             return verdict == Verdict.Preserved;
         }
@@ -175,18 +193,29 @@ namespace ReduSharptor.HDD
             }
         }
 
-        private int CountAlive(List<StatementNode> nodes)
+        /// <summary>
+        /// Counts alive statements (no removed self or ancestor), split by the
+        /// Tree/NonTree category of the original hierarchy — the counts the
+        /// RQ4 cross-check measures are built from.
+        /// </summary>
+        private (int total, int tree, int nonTree) CountAlive(List<StatementNode> nodes)
         {
-            int count = 0;
+            int total = 0, tree = 0, nonTree = 0;
             foreach (StatementNode node in nodes)
             {
                 if (_removed.Contains(node.Syntax))
                 {
                     continue;
                 }
-                count += 1 + CountAlive(node.Children);
+                total++;
+                if (node.IsTree) tree++; else nonTree++;
+
+                (int t, int tr, int nt) = CountAlive(node.Children);
+                total += t;
+                tree += tr;
+                nonTree += nt;
             }
-            return count;
+            return (total, tree, nonTree);
         }
     }
 }
